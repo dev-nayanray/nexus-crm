@@ -1,0 +1,486 @@
+// CRM Prisma Schema — B2B SaaS CRM
+// Designed to be portable to Supabase Postgres: enum → string + CHECK, cuid → uuid
+//
+// For LOCAL development: provider = "sqlite" (default)
+// For PRODUCTION with Supabase: change to provider = "postgresql"
+// The SQL migration in /supabase/migrations/ is the source of truth for Postgres.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Auth & Users
+// ────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("SALES_REP") // ADMIN | SALES_MANAGER | SALES_REP
+  status       String   @default("ACTIVE")    // ACTIVE | DISABLED
+  avatarUrl    String?
+  phone        String?
+  jobTitle     String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Ownership relations
+  customers      Customer[]
+  leads          Lead[]
+  followUps      FollowUp[]
+  quotations     Quotation[]
+  orders         Order[]
+  calls          Call[]
+  emailLogs      EmailLog[]
+  purchaseOrders PurchaseOrder[]
+  payments       Payment[]
+  activityLogs   ActivityLog[]
+
+  @@index([role])
+  @@index([status])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Customers
+// ────────────────────────────────────────────────────────────────────────────
+
+model Customer {
+  id          String   @id @default(cuid())
+  name        String
+  company     String
+  email       String
+  phone       String?
+  website     String?
+  address     String?
+  city        String?
+  state       String?
+  country     String?
+  postalCode  String?
+  type        String   @default("BUSINESS") // INDIVIDUAL | BUSINESS
+  status      String   @default("ACTIVE")   // ACTIVE | INACTIVE | BLACKLISTED
+  industry    String?
+  annualRevenue Float?
+  employees   Int?
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  notes       String?
+  tags        String?  // comma-separated
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  leads        Lead[]
+  followUps    FollowUp[]
+  quotations   Quotation[]
+  orders       Order[]
+  payments     Payment[]
+  calls        Call[]
+  emailLogs    EmailLog[]
+
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([company])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Leads
+// ────────────────────────────────────────────────────────────────────────────
+
+model Lead {
+  id         String   @id @default(cuid())
+  name       String
+  company    String
+  email      String
+  phone      String?
+  title      String?
+  source     String   @default("WEBSITE") // WEBSITE | REFERRAL | COLD_CALL | EVENT | ADS | OTHER
+  stage      String   @default("NEW")     // NEW | CONTACTED | QUALIFIED | PROPOSAL | NEGOTIATION | WON | LOST
+  status     String   @default("OPEN")    // OPEN | CONVERTED | LOST
+  value      Float    @default(0)
+  currency   String   @default("USD")
+  probability Int     @default(0)         // 0-100
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id])
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  notes      String?
+  expectedCloseDate DateTime?
+  convertedAt DateTime?
+  lostReason String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  followUps  FollowUp[]
+  quotations Quotation[]
+  calls      Call[]
+  emailLogs  EmailLog[]
+
+  @@index([ownerId])
+  @@index([stage])
+  @@index([status])
+  @@index([customerId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Follow-ups
+// ────────────────────────────────────────────────────────────────────────────
+
+model FollowUp {
+  id          String   @id @default(cuid())
+  title       String
+  type        String   @default("CALL") // CALL | EMAIL | MEETING | TASK | OTHER
+  status      String   @default("PENDING") // PENDING | DONE | SKIPPED | OVERDUE
+  priority    String   @default("MEDIUM") // LOW | MEDIUM | HIGH
+  dueDate     DateTime
+  completedAt DateTime?
+  notes       String?
+  assigneeId  String
+  assignee    User     @relation(fields: [assigneeId], references: [id])
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([assigneeId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([leadId])
+  @@index([customerId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Products & Inventory
+// ────────────────────────────────────────────────────────────────────────────
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  sku         String   @unique
+  description String?
+  category    String?
+  unit        String   @default("PCS") // PCS | KG | LITER | BOX | SERVICE
+  price       Float    @default(0)
+  cost        Float    @default(0)
+  taxRate     Float    @default(0)
+  status      String   @default("ACTIVE") // ACTIVE | DISCONTINUED
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  inventory         Inventory?
+  quotationItems    QuotationItem[]
+  orderItems        OrderItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+
+  @@index([category])
+  @@index([status])
+}
+
+model Inventory {
+  id            String   @id @default(cuid())
+  productId     String   @unique
+  product       Product  @relation(fields: [productId], references: [id])
+  quantity      Int      @default(0)
+  reserved      Int      @default(0)
+  reorderLevel  Int      @default(10)
+  location      String?
+  lastStockDate DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([productId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Quotations
+// ────────────────────────────────────────────────────────────────────────────
+
+model Quotation {
+  id           String   @id @default(cuid())
+  number       String   @unique
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id])
+  leadId       String?
+  lead         Lead?    @relation(fields: [leadId], references: [id])
+  ownerId      String
+  owner        User     @relation(fields: [ownerId], references: [id])
+  status       String   @default("DRAFT") // DRAFT | SENT | ACCEPTED | REJECTED | EXPIRED | CONVERTED
+  subject      String
+  subtotal     Float    @default(0)
+  taxRate      Float    @default(0)
+  taxAmount    Float    @default(0)
+  discount     Float    @default(0)
+  total        Float    @default(0)
+  currency     String   @default("USD")
+  validUntil   DateTime?
+  sentAt       DateTime?
+  acceptedAt   DateTime?
+  notes        String?
+  terms        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items      QuotationItem[]
+  order      Order?
+
+  @@index([customerId])
+  @@index([ownerId])
+  @@index([status])
+}
+
+model QuotationItem {
+  id           String   @id @default(cuid())
+  quotationId  String
+  quotation    Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  productId    String?
+  product      Product?  @relation(fields: [productId], references: [id])
+  description  String
+  qty          Float     @default(1)
+  unitPrice    Float     @default(0)
+  discount     Float     @default(0)
+  taxRate      Float     @default(0)
+  total        Float     @default(0)
+  createdAt    DateTime  @default(now())
+
+  @@index([quotationId])
+  @@index([productId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Orders
+// ────────────────────────────────────────────────────────────────────────────
+
+model Order {
+  id            String   @id @default(cuid())
+  number        String   @unique
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  quotationId   String?  @unique
+  quotation     Quotation? @relation(fields: [quotationId], references: [id])
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id])
+  status        String   @default("PENDING") // PENDING | CONFIRMED | PROCESSING | SHIPPED | DELIVERED | CANCELLED | REFUNDED
+  paymentStatus String   @default("UNPAID")   // UNPAID | PARTIAL | PAID | OVERPAID
+  fulfillmentStatus String @default("UNFULFILLED") // UNFULFILLED | PARTIAL | FULFILLED
+  subtotal      Float    @default(0)
+  taxRate       Float    @default(0)
+  taxAmount     Float    @default(0)
+  discount      Float    @default(0)
+  shipping      Float    @default(0)
+  total         Float    @default(0)
+  paidAmount    Float    @default(0)
+  currency      String   @default("USD")
+  orderDate     DateTime @default(now())
+  shippedAt     DateTime?
+  deliveredAt   DateTime?
+  cancelledAt   DateTime?
+  notes         String?
+  shippingAddress String?
+  billingAddress  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items      OrderItem[]
+  payments   Payment[]
+
+  @@index([customerId])
+  @@index([ownerId])
+  @@index([status])
+  @@index([paymentStatus])
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  description String
+  qty         Float    @default(1)
+  unitPrice   Float    @default(0)
+  discount    Float    @default(0)
+  taxRate     Float    @default(0)
+  total       Float    @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Payments
+// ────────────────────────────────────────────────────────────────────────────
+
+model Payment {
+  id          String   @id @default(cuid())
+  number      String   @unique
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id])
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  amount      Float
+  currency    String   @default("USD")
+  method      String   @default("BANK_TRANSFER") // CASH | CREDIT_CARD | BANK_TRANSFER | PAYPAL | CHECK | OTHER
+  status      String   @default("PENDING") // PENDING | COMPLETED | FAILED | REFUNDED
+  reference   String?
+  paidAt      DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+
+  @@index([orderId])
+  @@index([customerId])
+  @@index([status])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Purchase Orders
+// ────────────────────────────────────────────────────────────────────────────
+
+model PurchaseOrder {
+  id          String   @id @default(cuid())
+  number      String   @unique
+  supplier    String
+  supplierEmail String?
+  supplierPhone String?
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  status      String   @default("DRAFT") // DRAFT | SENT | PARTIAL | RECEIVED | CANCELLED
+  subtotal    Float    @default(0)
+  taxAmount   Float    @default(0)
+  total       Float    @default(0)
+  currency    String   @default("USD")
+  expectedDate DateTime?
+  receivedAt  DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items      PurchaseOrderItem[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([supplier])
+}
+
+model PurchaseOrderItem {
+  id              String   @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  description     String
+  qty             Float    @default(1)
+  unitPrice       Float    @default(0)
+  total           Float    @default(0)
+  receivedQty     Float    @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Communications
+// ────────────────────────────────────────────────────────────────────────────
+
+model Call {
+  id          String   @id @default(cuid())
+  type        String   @default("CALL") // CALL | MESSAGE
+  direction   String   @default("OUTBOUND") // INBOUND | OUTBOUND
+  status      String   @default("COMPLETED") // COMPLETED | MISSED | FAILED | SCHEDULED
+  duration    Int      @default(0) // seconds
+  subject     String?
+  notes       String?
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  startedAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([leadId])
+  @@index([userId])
+  @@index([type])
+}
+
+model EmailLog {
+  id          String   @id @default(cuid())
+  to          String
+  from        String
+  cc          String?
+  bcc         String?
+  subject     String
+  body        String
+  status      String   @default("SENT") // SENT | DELIVERED | OPENED | FAILED | BOUNCED
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  sentAt      DateTime @default(now())
+  openedAt    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([leadId])
+  @@index([userId])
+  @@index([status])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Activity Log (audit trail)
+// ────────────────────────────────────────────────────────────────────────────
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String   // CREATE | UPDATE | DELETE | LOGIN | LOGOUT | CONVERT | STATUS_CHANGE | ...
+  entity     String   // CUSTOMER | LEAD | ORDER | ...
+  entityId   String
+  entityName String?
+  summary    String
+  metadata   String?  // JSON string
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity])
+  @@index([entityId])
+  @@index([createdAt])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Settings (key-value store)
+// ────────────────────────────────────────────────────────────────────────────
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  category  String   @default("GENERAL")
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
