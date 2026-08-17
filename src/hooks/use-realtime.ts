@@ -5,7 +5,7 @@ import { io, Socket } from 'socket.io-client'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-const REALTIME_PORT = 3003
+const REALTIME_URL = process.env.NEXT_PUBLIC_REALTIME_URL || ''
 
 interface CrmEvent {
   type: 'CREATE' | 'UPDATE' | 'DELETE' | 'CONVERT' | 'STATUS_CHANGE' | 'BULK'
@@ -43,8 +43,10 @@ export function useRealtimeSync() {
   const socketRef = useRef<Socket | null>(null)
 
   useEffect(() => {
-    // Connect via Caddy gateway using XTransformPort query param
-    const socket = io(`/?XTransformPort=${REALTIME_PORT}`, {
+    if (!REALTIME_URL) return
+
+    // Connect directly to the standalone realtime service
+    const socket = io(REALTIME_URL, {
       transports: ['websocket', 'polling'],
       forceNew: true,
       reconnection: true,

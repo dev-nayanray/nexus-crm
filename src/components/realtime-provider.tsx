@@ -3,7 +3,7 @@
 import { useEffect, useRef, ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-const REALTIME_PORT = 3003
+const REALTIME_URL = process.env.NEXT_PUBLIC_REALTIME_URL || ''
 
 interface CrmEvent {
   type: 'CREATE' | 'UPDATE' | 'DELETE' | 'CONVERT' | 'STATUS_CHANGE' | 'BULK'
@@ -40,6 +40,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef<any>(null)
 
   useEffect(() => {
+    // No realtime service configured for this deployment — skip entirely
+    // instead of trying (and failing) to connect to a relative URL that
+    // has nothing to resolve it.
+    if (!REALTIME_URL) return
+
     let socket: any = null
 
     try {
@@ -47,7 +52,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       import('socket.io-client')
         .then(({ io }) => {
           try {
-            socket = io(`/?XTransformPort=${REALTIME_PORT}`, {
+            socket = io(REALTIME_URL, {
               transports: ['websocket', 'polling'],
               forceNew: true,
               reconnection: true,
