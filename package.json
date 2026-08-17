@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "db:seed": "tsx prisma/seed.ts",
+    "db:fix-enums": "prisma db execute --file supabase/migrations/20260101000002_fix_enum_text_mismatch.sql --schema prisma/schema.prisma",
     "postinstall": "prisma generate"
   },
   "dependencies": {

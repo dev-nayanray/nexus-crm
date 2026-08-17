@@ -41,6 +41,13 @@ git push -u origin main
 1. In Supabase Dashboard → **SQL Editor**
 2. Copy-paste contents of `supabase/migrations/20260101000000_schema.sql` → Run
 3. Copy-paste contents of `supabase/migrations/20260101000001_rls_policies.sql` → Run
+4. **Required — do not skip:** Copy-paste contents of `supabase/migrations/20260101000002_fix_enum_text_mismatch.sql` → Run.
+   Migration `...000000_schema.sql` creates native Postgres ENUM types for every status/role/type
+   column, but `prisma/schema.prisma` models all of them as plain `String`. Without this third
+   migration, every login fails with a Prisma `P2032` error ("Error converting field role of
+   expected non-nullable type String, found incompatible value of ADMIN"), and every other
+   status-column read will fail the same way the first time the app touches it. This is not
+   optional — the app will not work without it.
 
 #### Option B: Via Supabase CLI
 ```bash

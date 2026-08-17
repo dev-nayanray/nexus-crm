@@ -79,6 +79,11 @@ You have two options:
 6. Open `supabase/migrations/20260101000001_rls_policies.sql`
 7. Copy all content, paste into a new query
 8. Click **"Run"** — this adds Row Level Security policies
+9. **Required, do not skip:** open `supabase/migrations/20260101000002_fix_enum_text_mismatch.sql`,
+   copy all content, paste into a new query, click **"Run"**. Step 5 creates native Postgres ENUM
+   types for every status/role/type column, but the Prisma schema models them all as plain
+   `String`. Skipping this step breaks login and every other status-column read with a Prisma
+   `P2032` error the moment the app queries that column.
 
 **Option B: Via Supabase CLI**
 
