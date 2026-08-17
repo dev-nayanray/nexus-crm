@@ -37,7 +37,7 @@ create type activity_action as enum ('CREATE', 'UPDATE', 'DELETE', 'CONVERT', 'S
 -- ─── Tables ─────────────────────────────────────────────────────────────────
 
 create table if not exists "User" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   email text unique not null,
   name text not null,
   password_hash text not null,
@@ -52,7 +52,7 @@ create table if not exists "User" (
 );
 
 create table if not exists "Customer" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   name text not null,
   company text not null,
   email text not null,
@@ -68,7 +68,7 @@ create table if not exists "Customer" (
   industry text,
   annual_revenue numeric(15,2),
   employees integer,
-  owner_id uuid not null references "User"(id) on delete restrict,
+  owner_id text not null references "User"(id) on delete restrict,
   notes text,
   tags text,
   created_at timestamptz not null default now(),
@@ -79,7 +79,7 @@ create index if not exists idx_customer_status on "Customer"(status);
 create index if not exists idx_customer_company on "Customer"(company);
 
 create table if not exists "Lead" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   name text not null,
   company text not null,
   email text not null,
@@ -91,8 +91,8 @@ create table if not exists "Lead" (
   value numeric(15,2) not null default 0,
   currency text not null default 'USD',
   probability integer not null default 0 check (probability >= 0 and probability <= 100),
-  owner_id uuid not null references "User"(id) on delete restrict,
-  customer_id uuid references "Customer"(id) on delete set null,
+  owner_id text not null references "User"(id) on delete restrict,
+  customer_id text references "Customer"(id) on delete set null,
   notes text,
   expected_close_date timestamptz,
   converted_at timestamptz,
@@ -106,7 +106,7 @@ create index if not exists idx_lead_status on "Lead"(status);
 create index if not exists idx_lead_customer_id on "Lead"(customer_id);
 
 create table if not exists "FollowUp" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   title text not null,
   type followup_type not null default 'CALL',
   status followup_status not null default 'PENDING',
@@ -114,9 +114,9 @@ create table if not exists "FollowUp" (
   due_date timestamptz not null,
   completed_at timestamptz,
   notes text,
-  assignee_id uuid not null references "User"(id) on delete restrict,
-  customer_id uuid references "Customer"(id) on delete set null,
-  lead_id uuid references "Lead"(id) on delete set null,
+  assignee_id text not null references "User"(id) on delete restrict,
+  customer_id text references "Customer"(id) on delete set null,
+  lead_id text references "Lead"(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -125,7 +125,7 @@ create index if not exists idx_followup_status on "FollowUp"(status);
 create index if not exists idx_followup_due_date on "FollowUp"(due_date);
 
 create table if not exists "Product" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   name text not null,
   sku text unique not null,
   description text,
@@ -143,8 +143,8 @@ create index if not exists idx_product_category on "Product"(category);
 create index if not exists idx_product_status on "Product"(status);
 
 create table if not exists "Inventory" (
-  id uuid primary key default gen_random_uuid(),
-  product_id uuid unique not null references "Product"(id) on delete cascade,
+  id text primary key not null,
+  product_id text unique not null references "Product"(id) on delete cascade,
   quantity integer not null default 0,
   reserved integer not null default 0,
   reorder_level integer not null default 10,
@@ -156,11 +156,11 @@ create table if not exists "Inventory" (
 create index if not exists idx_inventory_product_id on "Inventory"(product_id);
 
 create table if not exists "Quotation" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   number text unique not null,
-  customer_id uuid not null references "Customer"(id) on delete restrict,
-  lead_id uuid references "Lead"(id) on delete set null,
-  owner_id uuid not null references "User"(id) on delete restrict,
+  customer_id text not null references "Customer"(id) on delete restrict,
+  lead_id text references "Lead"(id) on delete set null,
+  owner_id text not null references "User"(id) on delete restrict,
   status quotation_status not null default 'DRAFT',
   subject text not null,
   subtotal numeric(15,2) not null default 0,
@@ -182,9 +182,9 @@ create index if not exists idx_quotation_owner_id on "Quotation"(owner_id);
 create index if not exists idx_quotation_status on "Quotation"(status);
 
 create table if not exists "QuotationItem" (
-  id uuid primary key default gen_random_uuid(),
-  quotation_id uuid not null references "Quotation"(id) on delete cascade,
-  product_id uuid references "Product"(id) on delete set null,
+  id text primary key not null,
+  quotation_id text not null references "Quotation"(id) on delete cascade,
+  product_id text references "Product"(id) on delete set null,
   description text not null,
   qty numeric(15,2) not null default 1,
   unit_price numeric(15,2) not null default 0,
@@ -196,11 +196,11 @@ create table if not exists "QuotationItem" (
 create index if not exists idx_quotation_item_quotation_id on "QuotationItem"(quotation_id);
 
 create table if not exists "Order" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   number text unique not null,
-  customer_id uuid not null references "Customer"(id) on delete restrict,
-  quotation_id uuid unique references "Quotation"(id) on delete set null,
-  owner_id uuid not null references "User"(id) on delete restrict,
+  customer_id text not null references "Customer"(id) on delete restrict,
+  quotation_id text unique references "Quotation"(id) on delete set null,
+  owner_id text not null references "User"(id) on delete restrict,
   status order_status not null default 'PENDING',
   payment_status payment_status not null default 'UNPAID',
   fulfillment_status fulfillment_status not null default 'UNFULFILLED',
@@ -228,9 +228,9 @@ create index if not exists idx_order_status on "Order"(status);
 create index if not exists idx_order_payment_status on "Order"(payment_status);
 
 create table if not exists "OrderItem" (
-  id uuid primary key default gen_random_uuid(),
-  order_id uuid not null references "Order"(id) on delete cascade,
-  product_id uuid references "Product"(id) on delete set null,
+  id text primary key not null,
+  order_id text not null references "Order"(id) on delete cascade,
+  product_id text references "Product"(id) on delete set null,
   description text not null,
   qty numeric(15,2) not null default 1,
   unit_price numeric(15,2) not null default 0,
@@ -242,11 +242,11 @@ create table if not exists "OrderItem" (
 create index if not exists idx_order_item_order_id on "OrderItem"(order_id);
 
 create table if not exists "Payment" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   number text unique not null,
-  order_id uuid not null references "Order"(id) on delete restrict,
-  customer_id uuid not null references "Customer"(id) on delete restrict,
-  owner_id uuid not null references "User"(id) on delete restrict,
+  order_id text not null references "Order"(id) on delete restrict,
+  customer_id text not null references "Customer"(id) on delete restrict,
+  owner_id text not null references "User"(id) on delete restrict,
   amount numeric(15,2) not null,
   currency text not null default 'USD',
   method payment_method not null default 'BANK_TRANSFER',
@@ -262,12 +262,12 @@ create index if not exists idx_payment_customer_id on "Payment"(customer_id);
 create index if not exists idx_payment_status on "Payment"(status);
 
 create table if not exists "PurchaseOrder" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   number text unique not null,
   supplier text not null,
   supplier_email text,
   supplier_phone text,
-  owner_id uuid not null references "User"(id) on delete restrict,
+  owner_id text not null references "User"(id) on delete restrict,
   status po_status not null default 'DRAFT',
   subtotal numeric(15,2) not null default 0,
   tax_amount numeric(15,2) not null default 0,
@@ -283,9 +283,9 @@ create index if not exists idx_po_owner_id on "PurchaseOrder"(owner_id);
 create index if not exists idx_po_status on "PurchaseOrder"(status);
 
 create table if not exists "PurchaseOrderItem" (
-  id uuid primary key default gen_random_uuid(),
-  purchase_order_id uuid not null references "PurchaseOrder"(id) on delete cascade,
-  product_id uuid references "Product"(id) on delete set null,
+  id text primary key not null,
+  purchase_order_id text not null references "PurchaseOrder"(id) on delete cascade,
+  product_id text references "Product"(id) on delete set null,
   description text not null,
   qty numeric(15,2) not null default 1,
   unit_price numeric(15,2) not null default 0,
@@ -296,16 +296,16 @@ create table if not exists "PurchaseOrderItem" (
 create index if not exists idx_po_item_po_id on "PurchaseOrderItem"(purchase_order_id);
 
 create table if not exists "Call" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   type call_type not null default 'CALL',
   direction call_direction not null default 'OUTBOUND',
   status call_status not null default 'COMPLETED',
   duration integer not null default 0,
   subject text,
   notes text,
-  customer_id uuid references "Customer"(id) on delete set null,
-  lead_id uuid references "Lead"(id) on delete set null,
-  user_id uuid not null references "User"(id) on delete restrict,
+  customer_id text references "Customer"(id) on delete set null,
+  lead_id text references "Lead"(id) on delete set null,
+  user_id text not null references "User"(id) on delete restrict,
   started_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -315,7 +315,7 @@ create index if not exists idx_call_lead_id on "Call"(lead_id);
 create index if not exists idx_call_user_id on "Call"(user_id);
 
 create table if not exists "EmailLog" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   "to" text not null,
   "from" text not null,
   cc text,
@@ -323,9 +323,9 @@ create table if not exists "EmailLog" (
   subject text not null,
   body text not null,
   status email_status not null default 'SENT',
-  customer_id uuid references "Customer"(id) on delete set null,
-  lead_id uuid references "Lead"(id) on delete set null,
-  user_id uuid not null references "User"(id) on delete restrict,
+  customer_id text references "Customer"(id) on delete set null,
+  lead_id text references "Lead"(id) on delete set null,
+  user_id text not null references "User"(id) on delete restrict,
   sent_at timestamptz not null default now(),
   opened_at timestamptz,
   created_at timestamptz not null default now(),
@@ -335,8 +335,8 @@ create index if not exists idx_email_customer_id on "EmailLog"(customer_id);
 create index if not exists idx_email_user_id on "EmailLog"(user_id);
 
 create table if not exists "ActivityLog" (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references "User"(id) on delete restrict,
+  id text primary key not null,
+  user_id text not null references "User"(id) on delete restrict,
   action activity_action not null,
   entity text not null,
   entity_id text not null,
@@ -353,12 +353,12 @@ create index if not exists idx_activity_entity_id on "ActivityLog"(entity_id);
 create index if not exists idx_activity_created_at on "ActivityLog"(created_at desc);
 
 create table if not exists "Setting" (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key not null,
   key text unique not null,
   value text not null,
   category text not null default 'GENERAL',
   updated_at timestamptz not null default now(),
-  updated_by uuid references "User"(id) on delete set null
+  updated_by text references "User"(id) on delete set null
 );
 
 -- ─── Updated_at triggers ────────────────────────────────────────────────────
