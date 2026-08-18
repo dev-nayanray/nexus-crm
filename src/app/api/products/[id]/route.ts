@@ -10,6 +10,7 @@ const PatchSchema = z.object({
   sku: z.string().min(1).optional(),
   description: z.string().optional().nullable(),
   category: z.string().optional().nullable(),
+  categoryId: z.string().optional().nullable(),
   unit: z.string().optional(),
   price: z.number().min(0).optional(),
   cost: z.number().min(0).optional(),
@@ -24,7 +25,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { id } = await params
     const p = await db.product.findUnique({
       where: { id },
-      include: { inventory: true },
+      include: { inventory: true, categoryRef: { select: { id: true, name: true, slug: true } } },
     })
     if (!p) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json(p)
@@ -39,7 +40,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const { id } = await params
     const body = await req.json()
     const parsed = PatchSchema.parse(body)
-    const updated = await db.product.update({ where: { id }, data: parsed, include: { inventory: true } })
+
+    const data: Record<string, unknown> = { ...parsed }
+    if (parsed.categoryId && !parsed.category) {
+      const cat = await db.category.findUnique({ where: { id: parsed.categoryId }, select: { name: true } })
+      if (cat) data.category = cat.name
+    }
+
+    const updated = await db.product.update({
+      where: { id },
+      data,
+      include: { inventory: true, categoryRef: { select: { id: true, name: true, slug: true } } },
+    })
     await logActivity({
       userId: user.id, action: 'UPDATE', entity: 'PRODUCT', entityId: id, entityName: updated.name,
       summary: `Updated product "${updated.name}"`,
