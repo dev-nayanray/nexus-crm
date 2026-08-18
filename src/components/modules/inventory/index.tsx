@@ -2,17 +2,21 @@
 
 import { useState } from 'react'
 import { ColumnDef } from '@tanstack/react-table'
-import { Warehouse, Plus, AlertTriangle, Minus, Plus as PlusIcon } from 'lucide-react'
-import { useEntityList, useUpdateEntity } from '@/hooks/use-entity'
+import { Warehouse, AlertTriangle, Plus as PlusIcon, History, User as UserIcon } from 'lucide-react'
+import { useEntityList } from '@/hooks/use-entity'
 import { PageHeader } from '@/components/shared/page-header'
 import { DataTable } from '@/components/shared/data-table'
+import { DetailDrawer } from '@/components/shared/detail-drawer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FormDialog } from '@/components/shared/form-dialog'
-import { useQueryClient } from '@tanstack/react-query'
-import { formatCurrency, formatRelative } from '@/lib/utils'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { formatRelative } from '@/lib/utils'
+import { STOCK_MOVEMENT_TYPES } from '@/lib/constants'
 import { toast } from 'sonner'
 
 type Inventory = any
@@ -20,6 +24,7 @@ type Inventory = any
 export function InventoryModule() {
   const [lowStock, setLowStock] = useState(false)
   const [adjustId, setAdjustId] = useState<string | null>(null)
+  const [historyId, setHistoryId] = useState<string | null>(null)
   const { data, isLoading, error, refetch } = useEntityList<Inventory>('inventory', {
     page: 1, pageSize: 10, lowStock: lowStock ? 'true' : 'all',
   })
@@ -35,7 +40,7 @@ export function InventoryModule() {
         </div>
       ),
     },
-    { id: 'category', header: 'Category', cell: ({ row }) => <Badge variant="outline" className="text-xs">{row.original.product?.category ?? '—'}</Badge> },
+    { id: 'category', header: 'Category', cell: ({ row }) => <Badge variant="outline" className="text-xs">{row.original.product?.categoryRef?.name ?? row.original.product?.category ?? '—'}</Badge> },
     {
       id: 'quantity',
       header: 'In stock',
@@ -78,6 +83,9 @@ export function InventoryModule() {
       header: '',
       cell: ({ row }) => (
         <div className="flex gap-1">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setHistoryId(row.original.id)} title="Stock history">
+            <History className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setAdjustId(row.original.id)} title="Adjust stock">
             <PlusIcon className="h-4 w-4" />
           </Button>
@@ -90,7 +98,7 @@ export function InventoryModule() {
     <div className="space-y-5">
       <PageHeader
         title="Inventory"
-        description="Monitor stock levels and trigger restock when needed"
+        description="Monitor stock levels, adjust quantities, and audit every stock movement"
         icon={<Warehouse className="h-5 w-5" />}
         actions={
           <Button variant={lowStock ? 'default' : 'outline'} onClick={() => setLowStock(!lowStock)} className="gap-1.5">
@@ -109,6 +117,7 @@ export function InventoryModule() {
         pageSize={10}
       />
       <AdjustStockDialog id={adjustId} open={!!adjustId} onOpenChange={(o) => !o && setAdjustId(null)} />
+      <StockHistoryDrawer id={historyId} open={!!historyId} onOpenChange={(o) => !o && setHistoryId(null)} />
     </div>
   )
 }
@@ -118,17 +127,21 @@ function AdjustStockDialog({ id, open, onOpenChange }: { id: string | null; open
   const [adjustBy, setAdjustBy] = useState<number>(0)
   const [newQty, setNewQty] = useState<number | null>(null)
   const [mode, setMode] = useState<'add' | 'set'>('add')
+  const [type, setType] = useState<string>('ADJUST')
+  const [reason, setReason] = useState('')
 
   async function onSubmit() {
     if (!id) return
-    const payload = mode === 'add' ? { adjustBy } : { quantity: newQty }
+    const payload: Record<string, unknown> = mode === 'add' ? { adjustBy } : { quantity: newQty }
+    payload.type = type
+    payload.reason = reason || undefined
     const res = await fetch(`/api/inventory/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     if (!res.ok) { toast.error('Failed to adjust stock'); return }
     toast.success('Stock updated')
-    setAdjustBy(0); setNewQty(null)
+    setAdjustBy(0); setNewQty(null); setReason(''); setType('ADJUST')
     qc.invalidateQueries({ queryKey: ['inventory'] })
     onOpenChange(false)
   }
@@ -136,9 +149,9 @@ function AdjustStockDialog({ id, open, onOpenChange }: { id: string | null; open
   return (
     <FormDialog
       open={open}
-      onOpenChange={(o) => { if (!o) { setAdjustBy(0); setNewQty(null) } onOpenChange(o) }}
+      onOpenChange={(o) => { if (!o) { setAdjustBy(0); setNewQty(null); setReason(''); setType('ADJUST') } onOpenChange(o) }}
       title="Adjust Stock"
-      description="Add or set the quantity for this inventory item"
+      description="Add or set the quantity for this inventory item — every change is logged."
       onSubmit={onSubmit}
       submitLabel="Update stock"
       size="sm"
@@ -158,8 +171,59 @@ function AdjustStockDialog({ id, open, onOpenChange }: { id: string | null; open
             <Input type="number" min={0} value={newQty ?? ''} onChange={(e) => setNewQty(Number(e.target.value))} />
           </Field>
         )}
+        <Field label="Movement type">
+          <Select value={type} onValueChange={setType}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(STOCK_MOVEMENT_TYPES).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Reason (optional)">
+          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Cycle count correction, damaged in transit…" />
+        </Field>
       </div>
     </FormDialog>
+  )
+}
+
+function StockHistoryDrawer({ id, open, onOpenChange }: { id: string | null; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['inventory', 'movements', id],
+    enabled: !!id && open,
+    queryFn: async () => {
+      const res = await fetch(`/api/inventory/${id}/movements`)
+      if (!res.ok) throw new Error('Failed to load history')
+      return res.json() as Promise<{ data: any[] }>
+    },
+  })
+
+  return (
+    <DetailDrawer open={open} onOpenChange={onOpenChange} title="Stock history" icon={<History className="h-4 w-4" />} width="md">
+      {isLoading ? (
+        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-14 animate-pulse rounded-lg bg-muted/50" />)}</div>
+      ) : !data?.data?.length ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">No stock movements recorded yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {data.data.map((m) => (
+            <div key={m.id} className="rounded-lg border border-border bg-card p-3">
+              <div className="flex items-center justify-between">
+                <Badge variant="outline" className={`text-xs ${STOCK_MOVEMENT_TYPES[m.type]?.color ?? ''}`}>{STOCK_MOVEMENT_TYPES[m.type]?.label ?? m.type}</Badge>
+                <span className={`text-sm font-semibold ${m.quantityChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {m.quantityChange >= 0 ? '+' : ''}{m.quantityChange}
+                </span>
+              </div>
+              {m.reason && <p className="mt-1.5 text-xs text-foreground">{m.reason}</p>}
+              <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span className="flex items-center gap-1"><UserIcon className="h-3 w-3" /> {m.user?.name ?? 'System'}</span>
+                <span>{formatRelative(m.createdAt)} · now {m.quantityAfter}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </DetailDrawer>
   )
 }
 
