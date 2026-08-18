@@ -9,6 +9,7 @@ export const MODULES = [
   'orders',
   'payments',
   'products',
+  'categories',
   'inventory',
   'purchase-orders',
   'calls',
@@ -50,6 +51,7 @@ export const NAV_GROUPS: Array<{
     label: 'Catalog',
     items: [
       { id: 'products', label: 'Products', icon: 'Package' },
+      { id: 'categories', label: 'Categories', icon: 'FolderTree' },
       { id: 'inventory', label: 'Inventory', icon: 'Warehouse' },
       { id: 'purchase-orders', label: 'Purchase Orders', icon: 'Truck' },
     ],
@@ -83,6 +85,7 @@ export const MODULE_LABELS: Record<ModuleId, string> = {
   orders: 'Orders',
   payments: 'Payments',
   products: 'Products',
+  categories: 'Categories',
   inventory: 'Inventory',
   'purchase-orders': 'Purchase Orders',
   calls: 'Calls & Messages',
@@ -170,6 +173,21 @@ export const CUSTOMER_TYPES = ['INDIVIDUAL', 'BUSINESS']
 export const PRODUCT_STATUSES: StatusConfig = {
   ACTIVE: { label: 'Active', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
   DISCONTINUED: { label: 'Discontinued', color: 'bg-zinc-100 text-zinc-700 border-zinc-200' },
+}
+
+export const CATEGORY_STATUSES: StatusConfig = {
+  ACTIVE: { label: 'Active', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  INACTIVE: { label: 'Inactive', color: 'bg-zinc-100 text-zinc-700 border-zinc-200' },
+}
+
+export const STOCK_MOVEMENT_TYPES: StatusConfig = {
+  RECEIVE: { label: 'Received', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  ADJUST: { label: 'Adjusted', color: 'bg-sky-100 text-sky-700 border-sky-200' },
+  SALE: { label: 'Sale', color: 'bg-violet-100 text-violet-700 border-violet-200' },
+  RETURN: { label: 'Return', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+  DAMAGE: { label: 'Damaged', color: 'bg-rose-100 text-rose-700 border-rose-200' },
+  TRANSFER: { label: 'Transferred', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+  CORRECTION: { label: 'Correction', color: 'bg-zinc-100 text-zinc-700 border-zinc-200' },
 }
 
 export const PO_STATUSES: StatusConfig = {

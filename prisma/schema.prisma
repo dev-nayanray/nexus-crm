@@ -41,6 +41,7 @@ model User {
   purchaseOrders PurchaseOrder[]
   activityLogs   ActivityLog[]
   payments       Payment[]
+  stockMovements StockMovement[]
 
   @@map("User")
   @@index([role])
@@ -168,7 +169,9 @@ model Product {
   name        String
   sku         String   @unique
   description String?
-  category    String?
+  category    String?  // legacy free-text label — kept for backward compatibility, prefer categoryId
+  categoryId  String?  @map("category_id")
+  categoryRef Category? @relation(fields: [categoryId], references: [id])
   unit        String   @default("PCS") // PCS | KG | LITER | BOX | SERVICE
   price       Float    @default(0)
   cost        Float    @default(0)
@@ -182,10 +185,38 @@ model Product {
   quotationItems    QuotationItem[]
   orderItems        OrderItem[]
   purchaseOrderItems PurchaseOrderItem[]
+  stockMovements    StockMovement[]
 
   @@map("Product")
   @@index([category])
+  @@index([categoryId])
   @@index([status])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Categories (dynamic, hierarchical product catalog)
+// ────────────────────────────────────────────────────────────────────────────
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  imageUrl    String?  @map("image_url")
+  status      String   @default("ACTIVE") // ACTIVE | INACTIVE
+  sortOrder   Int      @default(0) @map("sort_order")
+  parentId    String?  @map("parent_id")
+  parent      Category?  @relation("CategoryToParent", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryToParent")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  products    Product[]
+
+  @@map("Category")
+  @@index([parentId])
+  @@index([status])
+  @@index([sortOrder])
 }
 
 model Inventory {
@@ -200,8 +231,36 @@ model Inventory {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
+  movements     StockMovement[]
+
   @@map("Inventory")
   @@index([productId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Stock Movements (audit trail for every inventory change)
+// ────────────────────────────────────────────────────────────────────────────
+
+model StockMovement {
+  id             String   @id @default(cuid())
+  inventoryId    String   @map("inventory_id")
+  inventory      Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  productId      String   @map("product_id")
+  product        Product  @relation(fields: [productId], references: [id])
+  type           String   // RECEIVE | ADJUST | SALE | RETURN | DAMAGE | TRANSFER | CORRECTION
+  quantityChange Int      @map("quantity_change") // signed: +10 or -5
+  quantityAfter  Int      @map("quantity_after")
+  reason         String?
+  reference      String?  // e.g. PO number, order number
+  userId         String?  @map("user_id")
+  user           User?    @relation(fields: [userId], references: [id])
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("StockMovement")
+  @@index([inventoryId])
+  @@index([productId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 // ────────────────────────────────────────────────────────────────────────────

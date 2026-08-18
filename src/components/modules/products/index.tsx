@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { ColumnDef } from '@tanstack/react-table'
-import { Package, Plus, MoreHorizontal, Pencil, Trash2, ExternalLink, RefreshCw } from 'lucide-react'
+import { Package, Plus, MoreHorizontal, Pencil, Trash2, ExternalLink, RefreshCw, FolderTree } from 'lucide-react'
 import { useEntityList, useEntity, useCreateEntity, useUpdateEntity } from '@/hooks/use-entity'
 import { useModuleStore } from '@/stores/module-store'
 import { PageHeader } from '@/components/shared/page-header'
@@ -33,7 +33,7 @@ export function ProductsModule() {
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const { selectedId, select } = useModuleStore()
+  const { selectedId, select, set: setModule } = useModuleStore()
   const { user } = useAuth()
   const canManage = user?.role === 'ADMIN'
 
@@ -44,10 +44,10 @@ export function ProductsModule() {
   const bulk = useBulkAction('products')
 
   const { data, isLoading, error, refetch } = useEntityList<Product>('products', {
-    page: 1, pageSize: 10, status: statusFilter, category: categoryFilter,
+    page: 1, pageSize: 10, status: statusFilter, categoryId: categoryFilter,
   })
-
-  const categories = Array.from(new Set(data?.data?.map((p) => p.category).filter(Boolean) ?? []))
+  const { data: categoriesData } = useEntityList<any>('categories', { flat: 'true' as any, pageSize: 100 })
+  const categories = categoriesData?.data ?? []
 
   const columns: ColumnDef<Product>[] = [
     {
@@ -60,7 +60,7 @@ export function ProductsModule() {
         </div>
       ),
     },
-    { id: 'category', header: 'Category', cell: ({ row }) => <Badge variant="outline" className="text-xs">{row.original.category ?? '—'}</Badge> },
+    { id: 'category', header: 'Category', cell: ({ row }) => <Badge variant="outline" className="text-xs">{row.original.categoryRef?.name ?? row.original.category ?? '—'}</Badge> },
     { id: 'price', header: 'Price', cell: ({ row }) => <span className="text-sm font-medium text-foreground">{formatCurrency(row.original.price)}</span> },
     { id: 'cost', header: 'Cost', cell: ({ row }) => <span className="text-xs text-muted-foreground">{formatCurrency(row.original.cost)}</span> },
     {
@@ -116,6 +116,9 @@ export function ProductsModule() {
         icon={<Package className="h-5 w-5" />}
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setModule('categories')}>
+              <FolderTree className="h-3.5 w-3.5" /> Manage categories
+            </Button>
             <ExportButton entity="products" filters={{ status: statusFilter, category: categoryFilter }} />
             <Button onClick={() => setCreating(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add Product</Button>
           </div>
@@ -156,7 +159,7 @@ export function ProductsModule() {
               <SelectTrigger className="h-9 w-36 text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All categories</SelectItem>
-                {categories.map((c) => <SelectItem key={c} value={c as string}>{c}</SelectItem>)}
+                {categories.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -237,7 +240,7 @@ function ProductDetail({ id, onEdit }: { id: string; onEdit: () => void }) {
       <div className="grid grid-cols-2 gap-4 rounded-lg border border-border bg-card p-4">
         <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Price</p><p className="mt-0.5 text-lg font-semibold text-foreground">{formatCurrency(p.price)}</p></div>
         <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Cost</p><p className="mt-0.5 text-sm text-foreground">{formatCurrency(p.cost)}</p></div>
-        <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Category</p><p className="mt-0.5 text-sm text-foreground">{p.category ?? '—'}</p></div>
+        <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Category</p><p className="mt-0.5 text-sm text-foreground">{p.categoryRef?.name ?? p.category ?? '—'}</p></div>
         <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Unit</p><p className="mt-0.5 text-sm text-foreground">{p.unit}</p></div>
         <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tax rate</p><p className="mt-0.5 text-sm text-foreground">{p.taxRate}%</p></div>
         <div><p className="text-[10px] uppercase tracking-wider text-muted-foreground">Stock</p><p className="mt-0.5 text-sm text-foreground">{p.inventory ? `${p.inventory.quantity} ${p.unit}` : 'No stock'}</p></div>
@@ -255,6 +258,8 @@ function ProductDetail({ id, onEdit }: { id: string; onEdit: () => void }) {
 function ProductFormDialog({ open, onOpenChange, id }: { open: boolean; onOpenChange: (o: boolean) => void; id: string | null }) {
   const isEdit = !!id
   const { data: existing } = useEntity<Product>('products', id)
+  const { data: categoriesData } = useEntityList<any>('categories', { flat: 'true' as any, pageSize: 100 })
+  const categories = categoriesData?.data ?? []
   const create = useCreateEntity('products', 'Product created')
   const update = useUpdateEntity('products', id, 'Product updated')
 
@@ -264,20 +269,25 @@ function ProductFormDialog({ open, onOpenChange, id }: { open: boolean; onOpenCh
   if (isEdit && existing && !loaded) {
     setForm({
       name: existing.name, sku: existing.sku, description: existing.description ?? '',
-      category: existing.category ?? '', unit: existing.unit,
+      categoryId: existing.categoryId ?? existing.categoryRef?.id ?? 'none', unit: existing.unit,
       price: existing.price, cost: existing.cost, taxRate: existing.taxRate,
       status: existing.status, initialStock: '',
     })
     setLoaded(true)
   }
   if (!isEdit && Object.keys(form).length === 0) {
-    setForm({ name: '', sku: '', description: '', category: '', unit: 'PCS', price: 0, cost: 0, taxRate: 0, status: 'ACTIVE', initialStock: '' })
+    setForm({ name: '', sku: '', description: '', categoryId: 'none', unit: 'PCS', price: 0, cost: 0, taxRate: 0, status: 'ACTIVE', initialStock: '' })
   }
 
   function set(k: string, v: any) { setForm((f) => ({ ...f, [k]: v })) }
 
   async function onSubmit() {
-    const payload = { ...form, price: Number(form.price), cost: Number(form.cost), taxRate: Number(form.taxRate), initialStock: form.initialStock ? Number(form.initialStock) : null }
+    const payload = {
+      ...form,
+      price: Number(form.price), cost: Number(form.cost), taxRate: Number(form.taxRate),
+      initialStock: form.initialStock ? Number(form.initialStock) : null,
+      categoryId: form.categoryId === 'none' ? null : form.categoryId,
+    }
     if (isEdit) await update.mutateAsync(payload)
     else await create.mutateAsync(payload)
     setLoaded(false); setForm({})
@@ -297,7 +307,15 @@ function ProductFormDialog({ open, onOpenChange, id }: { open: boolean; onOpenCh
       <div className="grid grid-cols-2 gap-4">
         <Field label="Name *"><Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} required /></Field>
         <Field label="SKU *"><Input value={form.sku ?? ''} onChange={(e) => set('sku', e.target.value)} required /></Field>
-        <Field label="Category"><Input value={form.category ?? ''} onChange={(e) => set('category', e.target.value)} placeholder="Software, Hardware…" /></Field>
+        <Field label="Category">
+          <Select value={form.categoryId ?? 'none'} onValueChange={(v) => set('categoryId', v)}>
+            <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Uncategorized —</SelectItem>
+              {categories.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
         <Field label="Unit">
           <Select value={form.unit} onValueChange={(v) => set('unit', v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
