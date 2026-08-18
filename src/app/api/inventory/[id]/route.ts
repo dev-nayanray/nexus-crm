@@ -23,6 +23,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       where: { id },
       include: {
         product: { select: { id: true, name: true, sku: true, unit: true, category: true, categoryRef: { select: { id: true, name: true } } } },
+        warehouse: { select: { id: true, name: true, code: true } },
       },
     })
     if (!inv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -73,6 +74,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         data: {
           inventoryId: id,
           productId: existing.productId,
+          warehouseId: existing.warehouseId,
           type: parsed.type ?? (quantityChange > 0 ? 'ADJUST' : 'ADJUST'),
           quantityChange,
           quantityAfter: nextQuantity,

@@ -13,6 +13,7 @@ import { OrdersModule } from './orders'
 import { PaymentsModule } from './payments'
 import { ProductsModule } from './products'
 import { CategoriesModule } from './categories'
+import { WarehousesModule } from './warehouses'
 import { InventoryModule } from './inventory'
 import { PurchaseOrdersModule } from './purchase-orders'
 import { CallsModule } from './calls'
@@ -75,6 +76,7 @@ export function ModuleRouter() {
     case 'payments': return <PaymentsModule />
     case 'products': return <ProductsModule />
     case 'categories': return <CategoriesModule />
+    case 'warehouses': return <WarehousesModule />
     case 'inventory': return <InventoryModule />
     case 'purchase-orders': return <PurchaseOrdersModule />
     case 'calls': return <CallsModule />

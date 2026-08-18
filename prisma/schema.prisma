@@ -219,14 +219,38 @@ model Category {
   @@index([sortOrder])
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Warehouses (physical or virtual stock locations)
+// ────────────────────────────────────────────────────────────────────────────
+
+model Warehouse {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique // e.g. "DHK-01"
+  address   String?
+  city      String?
+  isDefault Boolean  @default(false) @map("is_default")
+  status    String   @default("ACTIVE") // ACTIVE | INACTIVE
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  inventory      Inventory[]
+  stockMovements StockMovement[]
+
+  @@map("Warehouse")
+  @@index([status])
+}
+
 model Inventory {
   id            String   @id @default(cuid())
-  productId     String   @unique @map("product_id")
+  productId     String   @map("product_id")
   product       Product  @relation(fields: [productId], references: [id])
+  warehouseId   String   @map("warehouse_id")
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
   quantity      Int      @default(0)
   reserved      Int      @default(0)
   reorderLevel  Int      @default(10) @map("reorder_level")
-  location      String?
+  location      String?  // free-text shelf/bin label within the warehouse
   lastStockDate DateTime? @map("last_stock_date")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -234,7 +258,9 @@ model Inventory {
   movements     StockMovement[]
 
   @@map("Inventory")
+  @@unique([productId, warehouseId])
   @@index([productId])
+  @@index([warehouseId])
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -247,11 +273,13 @@ model StockMovement {
   inventory      Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
   productId      String   @map("product_id")
   product        Product  @relation(fields: [productId], references: [id])
-  type           String   // RECEIVE | ADJUST | SALE | RETURN | DAMAGE | TRANSFER | CORRECTION
+  warehouseId    String   @map("warehouse_id")
+  warehouse      Warehouse @relation(fields: [warehouseId], references: [id])
+  type           String   // RECEIVE | ADJUST | SALE | RETURN | DAMAGE | TRANSFER_IN | TRANSFER_OUT | CORRECTION
   quantityChange Int      @map("quantity_change") // signed: +10 or -5
   quantityAfter  Int      @map("quantity_after")
   reason         String?
-  reference      String?  // e.g. PO number, order number
+  reference      String?  // e.g. PO number, order number, or a shared transfer id
   userId         String?  @map("user_id")
   user           User?    @relation(fields: [userId], references: [id])
   createdAt      DateTime @default(now()) @map("created_at")
@@ -259,6 +287,7 @@ model StockMovement {
   @@map("StockMovement")
   @@index([inventoryId])
   @@index([productId])
+  @@index([warehouseId])
   @@index([type])
   @@index([createdAt])
 }

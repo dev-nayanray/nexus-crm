@@ -10,6 +10,7 @@ export const MODULES = [
   'payments',
   'products',
   'categories',
+  'warehouses',
   'inventory',
   'purchase-orders',
   'calls',
@@ -52,6 +53,7 @@ export const NAV_GROUPS: Array<{
     items: [
       { id: 'products', label: 'Products', icon: 'Package' },
       { id: 'categories', label: 'Categories', icon: 'FolderTree' },
+      { id: 'warehouses', label: 'Warehouses', icon: 'Building2' },
       { id: 'inventory', label: 'Inventory', icon: 'Warehouse' },
       { id: 'purchase-orders', label: 'Purchase Orders', icon: 'Truck' },
     ],
@@ -86,6 +88,7 @@ export const MODULE_LABELS: Record<ModuleId, string> = {
   payments: 'Payments',
   products: 'Products',
   categories: 'Categories',
+  warehouses: 'Warehouses',
   inventory: 'Inventory',
   'purchase-orders': 'Purchase Orders',
   calls: 'Calls & Messages',
@@ -187,7 +190,14 @@ export const STOCK_MOVEMENT_TYPES: StatusConfig = {
   RETURN: { label: 'Return', color: 'bg-amber-100 text-amber-700 border-amber-200' },
   DAMAGE: { label: 'Damaged', color: 'bg-rose-100 text-rose-700 border-rose-200' },
   TRANSFER: { label: 'Transferred', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+  TRANSFER_IN: { label: 'Transfer in', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+  TRANSFER_OUT: { label: 'Transfer out', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
   CORRECTION: { label: 'Correction', color: 'bg-zinc-100 text-zinc-700 border-zinc-200' },
+}
+
+export const WAREHOUSE_STATUSES: StatusConfig = {
+  ACTIVE: { label: 'Active', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  INACTIVE: { label: 'Inactive', color: 'bg-zinc-100 text-zinc-700 border-zinc-200' },
 }
 
 export const PO_STATUSES: StatusConfig = {

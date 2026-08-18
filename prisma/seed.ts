@@ -96,6 +96,23 @@ async function main() {
   })
   console.log(`  ✓ ${categoryDefs.length + 2} categories`)
 
+  // ─── Warehouses ───────────────────────────────────────────────────────────
+  const warehouseDefs = [
+    { name: 'Main Warehouse', code: 'MAIN-01', city: 'Dhaka', isDefault: true },
+    { name: 'Chattogram Depot', code: 'CTG-01', city: 'Chattogram', isDefault: false },
+    { name: 'Khulna Storefront', code: 'KHL-01', city: 'Khulna', isDefault: false },
+  ]
+  const warehouses = []
+  for (const w of warehouseDefs) {
+    const warehouse = await db.warehouse.upsert({
+      where: { code: w.code },
+      update: {},
+      create: w,
+    })
+    warehouses.push(warehouse)
+  }
+  console.log(`  ✓ ${warehouses.length} warehouses`)
+
   // ─── Products & Inventory ─────────────────────────────────────────────────
   const productData = [
     { name: 'Nexus Pro License', sku: 'NX-PRO-001', category: 'Software', unit: 'PCS', price: 1499, cost: 350, taxRate: 10 },
@@ -135,19 +152,22 @@ async function main() {
     const product = await db.product.create({ data: { ...p, categoryId } })
     products.push(product)
     const initialQty = rint(5, 80)
+    const warehouse = pick(warehouses)
     const inv = await db.inventory.create({
       data: {
         productId: product.id,
+        warehouseId: warehouse.id,
         quantity: initialQty,
         reserved: rint(0, 5),
         reorderLevel: 10,
-        location: pick(['Warehouse A', 'Warehouse B', 'Warehouse C']),
+        location: pick(['Aisle A', 'Aisle B', 'Aisle C']),
       },
     })
     await db.stockMovement.create({
       data: {
         inventoryId: inv.id,
         productId: product.id,
+        warehouseId: warehouse.id,
         type: 'RECEIVE',
         quantityChange: initialQty,
         quantityAfter: initialQty,

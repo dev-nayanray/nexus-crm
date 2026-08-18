@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { ColumnDef } from '@tanstack/react-table'
-import { Warehouse, AlertTriangle, Plus as PlusIcon, History, User as UserIcon } from 'lucide-react'
+import { Warehouse, AlertTriangle, Plus as PlusIcon, History, User as UserIcon, ArrowLeftRight, Building2 } from 'lucide-react'
 import { useEntityList } from '@/hooks/use-entity'
 import { PageHeader } from '@/components/shared/page-header'
 import { DataTable } from '@/components/shared/data-table'
@@ -23,11 +23,22 @@ type Inventory = any
 
 export function InventoryModule() {
   const [lowStock, setLowStock] = useState(false)
+  const [warehouseId, setWarehouseId] = useState<string>('all')
   const [adjustId, setAdjustId] = useState<string | null>(null)
   const [historyId, setHistoryId] = useState<string | null>(null)
+  const [transferRow, setTransferRow] = useState<Inventory | null>(null)
   const { data, isLoading, error, refetch } = useEntityList<Inventory>('inventory', {
-    page: 1, pageSize: 10, lowStock: lowStock ? 'true' : 'all',
+    page: 1, pageSize: 10, lowStock: lowStock ? 'true' : 'all', warehouseId,
   })
+  const { data: warehousesData } = useQuery({
+    queryKey: ['warehouses', 'flat'],
+    queryFn: async () => {
+      const res = await fetch('/api/warehouses?flat=true')
+      if (!res.ok) throw new Error('Failed to load warehouses')
+      return res.json() as Promise<{ data: any[] }>
+    },
+  })
+  const warehouses = warehousesData?.data ?? []
 
   const columns: ColumnDef<Inventory>[] = [
     {
@@ -41,6 +52,15 @@ export function InventoryModule() {
       ),
     },
     { id: 'category', header: 'Category', cell: ({ row }) => <Badge variant="outline" className="text-xs">{row.original.product?.categoryRef?.name ?? row.original.product?.category ?? '—'}</Badge> },
+    {
+      id: 'warehouse',
+      header: 'Warehouse',
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <Building2 className="h-3 w-3" /> {row.original.warehouse?.name ?? '—'}
+        </span>
+      ),
+    },
     {
       id: 'quantity',
       header: 'In stock',
@@ -89,6 +109,9 @@ export function InventoryModule() {
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setAdjustId(row.original.id)} title="Adjust stock">
             <PlusIcon className="h-4 w-4" />
           </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTransferRow(row.original)} title="Transfer between warehouses">
+            <ArrowLeftRight className="h-4 w-4" />
+          </Button>
         </div>
       ),
     },
@@ -101,10 +124,19 @@ export function InventoryModule() {
         description="Monitor stock levels, adjust quantities, and audit every stock movement"
         icon={<Warehouse className="h-5 w-5" />}
         actions={
-          <Button variant={lowStock ? 'default' : 'outline'} onClick={() => setLowStock(!lowStock)} className="gap-1.5">
-            <AlertTriangle className="h-4 w-4" />
-            {lowStock ? 'Showing low stock only' : 'Show low stock only'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Select value={warehouseId} onValueChange={setWarehouseId}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="All warehouses" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All warehouses</SelectItem>
+                {warehouses.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button variant={lowStock ? 'default' : 'outline'} onClick={() => setLowStock(!lowStock)} className="gap-1.5">
+              <AlertTriangle className="h-4 w-4" />
+              {lowStock ? 'Showing low stock only' : 'Show low stock only'}
+            </Button>
+          </div>
         }
       />
       <DataTable
@@ -118,7 +150,82 @@ export function InventoryModule() {
       />
       <AdjustStockDialog id={adjustId} open={!!adjustId} onOpenChange={(o) => !o && setAdjustId(null)} />
       <StockHistoryDrawer id={historyId} open={!!historyId} onOpenChange={(o) => !o && setHistoryId(null)} />
+      <TransferStockDialog row={transferRow} warehouses={warehouses} open={!!transferRow} onOpenChange={(o) => !o && setTransferRow(null)} />
     </div>
+  )
+}
+
+function TransferStockDialog({
+  row, warehouses, open, onOpenChange,
+}: {
+  row: Inventory | null
+  warehouses: any[]
+  open: boolean
+  onOpenChange: (o: boolean) => void
+}) {
+  const qc = useQueryClient()
+  const [toWarehouseId, setToWarehouseId] = useState<string>('')
+  const [quantity, setQuantity] = useState<number>(0)
+  const [reason, setReason] = useState('')
+
+  const destinations = warehouses.filter((w) => w.id !== row?.warehouseId)
+
+  async function onSubmit() {
+    if (!row || !toWarehouseId || quantity <= 0) {
+      toast.error('Pick a destination warehouse and a quantity greater than zero')
+      return
+    }
+    const res = await fetch('/api/inventory/transfer', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId: row.productId,
+        fromWarehouseId: row.warehouseId,
+        toWarehouseId,
+        quantity,
+        reason: reason || undefined,
+      }),
+    })
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({ error: 'Transfer failed' }))
+      toast.error(e.error ?? 'Transfer failed')
+      return
+    }
+    toast.success('Stock transferred')
+    setToWarehouseId(''); setQuantity(0); setReason('')
+    qc.invalidateQueries({ queryKey: ['inventory'] })
+    onOpenChange(false)
+  }
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={(o) => { if (!o) { setToWarehouseId(''); setQuantity(0); setReason('') } onOpenChange(o) }}
+      title="Transfer Stock"
+      description={row ? `Move ${row.product?.name ?? 'this product'} out of ${row.warehouse?.name ?? 'this warehouse'} into another warehouse.` : ''}
+      onSubmit={onSubmit}
+      submitLabel="Transfer"
+      size="sm"
+    >
+      <div className="space-y-3">
+        <Field label="Available to transfer">
+          <p className="text-sm font-semibold text-foreground">{row?.quantity ?? 0} units</p>
+        </Field>
+        <Field label="Destination warehouse">
+          <Select value={toWarehouseId} onValueChange={setToWarehouseId}>
+            <SelectTrigger><SelectValue placeholder="Choose a warehouse" /></SelectTrigger>
+            <SelectContent>
+              {destinations.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Quantity">
+          <Input type="number" min={1} max={row?.quantity ?? undefined} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+        </Field>
+        <Field label="Reason (optional)">
+          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Rebalancing stock ahead of a promotion…" />
+        </Field>
+      </div>
+    </FormDialog>
   )
 }
 
