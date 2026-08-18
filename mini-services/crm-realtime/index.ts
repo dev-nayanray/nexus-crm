@@ -1,25 +1,21 @@
-import { createServer, IncomingMessage } from 'http'
+import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { Server } from 'socket.io'
 
-// ─── Socket.io server (port 3003) — for client connections via Caddy ─────────
-const socketHttpServer = createServer((req, res) => {
-  // socket.io will handle its own protocol; for other requests return 404
-  res.writeHead(404, { 'Content-Type': 'text/plain' })
-  res.end('Not Found — use socket.io client')
-})
+// Render (and most PaaS platforms) expose exactly ONE external port per
+// service, injected as process.env.PORT. This service used to hardcode two
+// separate ports (3003 for Socket.IO, 3004 for health/broadcast) which only
+// worked behind the Caddy reverse proxy in this repo's single-container
+// deployment path. On a standalone Render web service, only the first port
+// the process opens is reachable externally — so /health and /broadcast were
+// silently unroutable, and requests landed on the Socket.IO engine instead
+// (hence the "Transport unknown" engine.io error on GET /health).
+//
+// Fix: run ONE http server on PORT. Socket.IO attaches to it on its default
+// path (/socket.io/) so plain HTTP requests to /health and /broadcast are
+// untouched by the engine.io protocol handler and reach our own routes.
+const PORT = Number(process.env.PORT) || 3003
 
-const io = new Server(socketHttpServer, {
-  path: '/',
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
-  pingTimeout: 60000,
-  pingInterval: 25000,
-})
-
-// ─── HTTP broadcast server (port 3004) — for Next.js API routes ─────────────
-const broadcastServer = createServer((req: IncomingMessage, res: any) => {
+const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
   if (req.url === '/health' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ status: 'ok', service: 'crm-realtime', connections: io.engine.clientsCount }))
@@ -47,8 +43,21 @@ const broadcastServer = createServer((req: IncomingMessage, res: any) => {
     return
   }
 
+  // Anything else falls through here — Socket.IO's own protocol traffic
+  // is intercepted before this handler runs, since it lives on /socket.io/.
   res.writeHead(404, { 'Content-Type': 'text/plain' })
   res.end('Not Found')
+})
+
+// Default path (/socket.io/) — NOT '/', so plain HTTP requests to /health
+// and /broadcast are never swallowed by the engine.io protocol handler.
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000,
 })
 
 // ─── Socket.io event handlers ───────────────────────────────────────────────
@@ -78,16 +87,10 @@ io.on('connection', (socket) => {
   })
 })
 
-// ─── Start both servers ─────────────────────────────────────────────────────
-const SOCKET_PORT = 3003
-const BROADCAST_PORT = 3004
-
-socketHttpServer.listen(SOCKET_PORT, () => {
-  console.log(`[CRM Realtime] Socket.io server on port ${SOCKET_PORT} (for client connections via Caddy)`)
-})
-
-broadcastServer.listen(BROADCAST_PORT, () => {
-  console.log(`[CRM Realtime] Broadcast HTTP server on port ${BROADCAST_PORT} (for Next.js API routes)`)
-  console.log(`[CRM Realtime] Health: http://localhost:${BROADCAST_PORT}/health`)
-  console.log(`[CRM Realtime] Broadcast: POST http://localhost:${BROADCAST_PORT}/broadcast`)
+// ─── Start the single server ────────────────────────────────────────────────
+httpServer.listen(PORT, () => {
+  console.log(`[CRM Realtime] Listening on port ${PORT}`)
+  console.log(`[CRM Realtime] Socket.IO path: /socket.io/`)
+  console.log(`[CRM Realtime] Health: http://localhost:${PORT}/health`)
+  console.log(`[CRM Realtime] Broadcast: POST http://localhost:${PORT}/broadcast`)
 })

@@ -8,6 +8,7 @@ const Schema = z.object({
   sku: z.string().min(1),
   description: z.string().optional().nullable(),
   category: z.string().optional().nullable(),
+  categoryId: z.string().optional().nullable(),
   unit: z.string().optional().default('PCS'),
   price: z.number().min(0).default(0),
   cost: z.number().min(0).default(0),
@@ -24,10 +25,12 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url)
     const status = url.searchParams.get('status')
     const category = url.searchParams.get('category')
+    const categoryId = url.searchParams.get('categoryId')
 
     const where = {
       ...(status && status !== 'all' ? { status } : {}),
-      ...(category && category !== 'all' ? { category } : {}),
+      ...(categoryId && categoryId !== 'all' ? { categoryId } : {}),
+      ...(category && category !== 'all' && !categoryId ? { category } : {}),
       ...(search
         ? { OR: [{ name: { contains: search } }, { sku: { contains: search } }, { category: { contains: search } }] }
         : {}),
@@ -37,7 +40,7 @@ export async function GET(req: NextRequest) {
       db.product.findMany({
         where, skip, take,
         orderBy: { [sort]: order },
-        include: { inventory: true },
+        include: { inventory: true, categoryRef: { select: { id: true, name: true, slug: true } } },
       }),
       db.product.count({ where }),
     ])
@@ -54,19 +57,38 @@ export async function POST(req: NextRequest) {
     const parsed = Schema.parse(body)
 
     const { initialStock, ...productData } = parsed
+
+    // Keep legacy `category` label in sync when a dynamic categoryId is chosen,
+    // so older filters/reports that read the string field still work.
+    if (productData.categoryId && !productData.category) {
+      const cat = await db.category.findUnique({ where: { id: productData.categoryId }, select: { name: true } })
+      if (cat) productData.category = cat.name
+    }
+
     const product = await db.product.create({
       data: productData,
-      include: { inventory: true },
+      include: { inventory: true, categoryRef: { select: { id: true, name: true, slug: true } } },
     })
 
     if (initialStock && initialStock > 0) {
-      await db.inventory.create({
+      const inv = await db.inventory.create({
         data: {
           productId: product.id,
           quantity: initialStock,
           reserved: 0,
           reorderLevel: 10,
           lastStockDate: new Date(),
+        },
+      })
+      await db.stockMovement.create({
+        data: {
+          inventoryId: inv.id,
+          productId: product.id,
+          type: 'RECEIVE',
+          quantityChange: initialStock,
+          quantityAfter: initialStock,
+          reason: 'Initial stock on product creation',
+          userId: user.id,
         },
       })
     }

@@ -14,7 +14,7 @@ interface CrmEventPayload {
   userName?: string
 }
 
-const REALTIME_URL = process.env.REALTIME_URL ?? 'http://localhost:3004'
+const REALTIME_URL = process.env.REALTIME_URL ?? 'http://localhost:3003'
 
 export async function broadcastEvent(event: CrmEventPayload): Promise<void> {
   try {

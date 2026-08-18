@@ -12,6 +12,8 @@ export const MODULE_ACCESS: Record<ModuleId, Role[]> = {
   orders: ['ADMIN', 'SALES_MANAGER', 'SALES_REP'],
   payments: ['ADMIN', 'SALES_MANAGER', 'SALES_REP'],
   products: ['ADMIN', 'SALES_MANAGER', 'SALES_REP'],
+  categories: ['ADMIN', 'SALES_MANAGER'],
+  warehouses: ['ADMIN', 'SALES_MANAGER'],
   inventory: ['ADMIN', 'SALES_MANAGER'],
   'purchase-orders': ['ADMIN', 'SALES_MANAGER'],
   calls: ['ADMIN', 'SALES_MANAGER', 'SALES_REP'],

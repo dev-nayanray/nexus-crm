@@ -6,8 +6,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // DATABASE_URL: Supabase connection pooler (port 6543, ?pgbouncer=true) — used at runtime by every serverless function.
+  url       = env("DATABASE_URL")
+  // DIRECT_URL: Supabase direct connection (port 5432) — used only by `prisma migrate`/`db push`, never at runtime.
+  directUrl = env("DIRECT_URL")
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -38,6 +41,7 @@ model User {
   purchaseOrders PurchaseOrder[]
   activityLogs   ActivityLog[]
   payments       Payment[]
+  stockMovements StockMovement[]
 
   @@map("User")
   @@index([role])
@@ -165,7 +169,9 @@ model Product {
   name        String
   sku         String   @unique
   description String?
-  category    String?
+  category    String?  // legacy free-text label — kept for backward compatibility, prefer categoryId
+  categoryId  String?  @map("category_id")
+  categoryRef Category? @relation(fields: [categoryId], references: [id])
   unit        String   @default("PCS") // PCS | KG | LITER | BOX | SERVICE
   price       Float    @default(0)
   cost        Float    @default(0)
@@ -179,26 +185,111 @@ model Product {
   quotationItems    QuotationItem[]
   orderItems        OrderItem[]
   purchaseOrderItems PurchaseOrderItem[]
+  stockMovements    StockMovement[]
 
   @@map("Product")
   @@index([category])
+  @@index([categoryId])
+  @@index([status])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Categories (dynamic, hierarchical product catalog)
+// ────────────────────────────────────────────────────────────────────────────
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  imageUrl    String?  @map("image_url")
+  status      String   @default("ACTIVE") // ACTIVE | INACTIVE
+  sortOrder   Int      @default(0) @map("sort_order")
+  parentId    String?  @map("parent_id")
+  parent      Category?  @relation("CategoryToParent", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryToParent")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  products    Product[]
+
+  @@map("Category")
+  @@index([parentId])
+  @@index([status])
+  @@index([sortOrder])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Warehouses (physical or virtual stock locations)
+// ────────────────────────────────────────────────────────────────────────────
+
+model Warehouse {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique // e.g. "DHK-01"
+  address   String?
+  city      String?
+  isDefault Boolean  @default(false) @map("is_default")
+  status    String   @default("ACTIVE") // ACTIVE | INACTIVE
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  inventory      Inventory[]
+  stockMovements StockMovement[]
+
+  @@map("Warehouse")
   @@index([status])
 }
 
 model Inventory {
   id            String   @id @default(cuid())
-  productId     String   @unique @map("product_id")
+  productId     String   @map("product_id")
   product       Product  @relation(fields: [productId], references: [id])
+  warehouseId   String   @map("warehouse_id")
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
   quantity      Int      @default(0)
   reserved      Int      @default(0)
   reorderLevel  Int      @default(10) @map("reorder_level")
-  location      String?
+  location      String?  // free-text shelf/bin label within the warehouse
   lastStockDate DateTime? @map("last_stock_date")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
+  movements     StockMovement[]
+
   @@map("Inventory")
+  @@unique([productId, warehouseId])
   @@index([productId])
+  @@index([warehouseId])
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Stock Movements (audit trail for every inventory change)
+// ────────────────────────────────────────────────────────────────────────────
+
+model StockMovement {
+  id             String   @id @default(cuid())
+  inventoryId    String   @map("inventory_id")
+  inventory      Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  productId      String   @map("product_id")
+  product        Product  @relation(fields: [productId], references: [id])
+  warehouseId    String   @map("warehouse_id")
+  warehouse      Warehouse @relation(fields: [warehouseId], references: [id])
+  type           String   // RECEIVE | ADJUST | SALE | RETURN | DAMAGE | TRANSFER_IN | TRANSFER_OUT | CORRECTION
+  quantityChange Int      @map("quantity_change") // signed: +10 or -5
+  quantityAfter  Int      @map("quantity_after")
+  reason         String?
+  reference      String?  // e.g. PO number, order number, or a shared transfer id
+  userId         String?  @map("user_id")
+  user           User?    @relation(fields: [userId], references: [id])
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("StockMovement")
+  @@index([inventoryId])
+  @@index([productId])
+  @@index([warehouseId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 // ────────────────────────────────────────────────────────────────────────────

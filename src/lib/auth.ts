@@ -14,11 +14,22 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email.toLowerCase() },
-        })
+        let user
+        try {
+          user = await db.user.findUnique({
+            where: { email: credentials.email.toLowerCase() },
+          })
+        } catch (err) {
+          // A DB/connection error looks identical to "wrong password" in the UI toast,
+          // so log it loudly here — check Vercel function logs for this line.
+          console.error('[auth] DB error during login lookup:', err)
+          throw new Error('AuthDatabaseError')
+        }
 
-        if (!user || user.status !== 'ACTIVE') return null
+        if (!user || user.status !== 'ACTIVE') {
+          console.warn(`[auth] Login failed: no active user for ${credentials.email.toLowerCase()}`)
+          return null
+        }
 
         const valid = await bcrypt.compare(credentials.password, user.passwordHash)
         if (!valid) return null

@@ -8,7 +8,10 @@
 2. Create a new project
 3. Go to **SQL Editor** → run `supabase/migrations/20260101000000_schema.sql`
 4. Run `supabase/migrations/20260101000001_rls_policies.sql`
-5. Go to **Settings → Database → Connection string → "Transaction" mode**
+5. **Required — run this or login will fail:** run `supabase/migrations/20260101000002_fix_enum_text_mismatch.sql`.
+   Step 3 creates native Postgres ENUM types for status/role columns; the app's Prisma schema
+   expects plain text. Skipping this step causes every login to fail with a Prisma `P2032` error.
+6. Go to **Settings → Database → Connection string → "Transaction" mode**
 6. Copy the URL — it looks like:
    ```
    postgresql://postgres.XXXXX:PASSWORD@aws-0-region.pooler.supabase.com:6543/postgres

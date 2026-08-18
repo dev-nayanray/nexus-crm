@@ -67,6 +67,52 @@ async function main() {
   const salesUsers = [manager, rep1, rep2, rep3]
   console.log(`  ✓ ${users.length} users`)
 
+  // ─── Categories ─────────────────────────────────────────────────────────
+  const categoryDefs = [
+    { name: 'Software', description: 'Licenses, apps, and add-ons', sortOrder: 1 },
+    { name: 'Service', description: 'Professional and support services', sortOrder: 2 },
+    { name: 'Hardware', description: 'Physical equipment and devices', sortOrder: 3 },
+  ]
+  const categoryByName: Record<string, { id: string; name: string }> = {}
+  for (const c of categoryDefs) {
+    const slug = c.name.toLowerCase()
+    const category = await db.category.upsert({
+      where: { slug },
+      update: {},
+      create: { name: c.name, slug, description: c.description, sortOrder: c.sortOrder },
+    })
+    categoryByName[c.name] = category
+  }
+  // A couple of subcategories under Software, to demonstrate the hierarchy
+  const licensesSub = await db.category.upsert({
+    where: { slug: 'licenses' },
+    update: {},
+    create: { name: 'Licenses', slug: 'licenses', parentId: categoryByName['Software'].id, sortOrder: 1 },
+  })
+  const addOnsSub = await db.category.upsert({
+    where: { slug: 'add-ons' },
+    update: {},
+    create: { name: 'Add-ons', slug: 'add-ons', parentId: categoryByName['Software'].id, sortOrder: 2 },
+  })
+  console.log(`  ✓ ${categoryDefs.length + 2} categories`)
+
+  // ─── Warehouses ───────────────────────────────────────────────────────────
+  const warehouseDefs = [
+    { name: 'Main Warehouse', code: 'MAIN-01', city: 'Dhaka', isDefault: true },
+    { name: 'Chattogram Depot', code: 'CTG-01', city: 'Chattogram', isDefault: false },
+    { name: 'Khulna Storefront', code: 'KHL-01', city: 'Khulna', isDefault: false },
+  ]
+  const warehouses = []
+  for (const w of warehouseDefs) {
+    const warehouse = await db.warehouse.upsert({
+      where: { code: w.code },
+      update: {},
+      create: w,
+    })
+    warehouses.push(warehouse)
+  }
+  console.log(`  ✓ ${warehouses.length} warehouses`)
+
   // ─── Products & Inventory ─────────────────────────────────────────────────
   const productData = [
     { name: 'Nexus Pro License', sku: 'NX-PRO-001', category: 'Software', unit: 'PCS', price: 1499, cost: 350, taxRate: 10 },
@@ -91,21 +137,46 @@ async function main() {
     { name: 'Multi-tenant License', sku: 'LIC-MT-001', category: 'Software', unit: 'PCS', price: 3499, cost: 800, taxRate: 10 },
   ]
 
+  // Map a subset of licenses/add-ons to the new subcategories to demo hierarchy
+  const subCategoryBySku: Record<string, string> = {
+    'NX-PRO-001': licensesSub.id,
+    'NX-ENT-001': licensesSub.id,
+    'LIC-MT-001': licensesSub.id,
+    'ADD-ANA-001': addOnsSub.id,
+    'AUT-WFL-001': addOnsSub.id,
+  }
+
   const products: Array<{ id: string; name: string; sku: string; price: number; cost: number; category: string | null }> = []
   for (const p of productData) {
-    const product = await db.product.create({ data: p })
+    const categoryId = subCategoryBySku[p.sku] ?? categoryByName[p.category]?.id ?? null
+    const product = await db.product.create({ data: { ...p, categoryId } })
     products.push(product)
-    await db.inventory.create({
+    const initialQty = rint(5, 80)
+    const warehouse = pick(warehouses)
+    const inv = await db.inventory.create({
       data: {
         productId: product.id,
-        quantity: rint(5, 80),
+        warehouseId: warehouse.id,
+        quantity: initialQty,
         reserved: rint(0, 5),
         reorderLevel: 10,
-        location: pick(['Warehouse A', 'Warehouse B', 'Warehouse C']),
+        location: pick(['Aisle A', 'Aisle B', 'Aisle C']),
+      },
+    })
+    await db.stockMovement.create({
+      data: {
+        inventoryId: inv.id,
+        productId: product.id,
+        warehouseId: warehouse.id,
+        type: 'RECEIVE',
+        quantityChange: initialQty,
+        quantityAfter: initialQty,
+        reason: 'Initial seed stock',
+        userId: admin.id,
       },
     })
   }
-  console.log(`  ✓ ${products.length} products + inventory`)
+  console.log(`  ✓ ${products.length} products + inventory + stock movements`)
 
   // ─── Customers ───────────────────────────────────────────────────────────
   const customers: Array<{ id: string; name: string; company: string; email: string; ownerId: string }> = []

@@ -4,6 +4,12 @@ import bcrypt from 'bcryptjs'
 import { logActivity } from '@/lib/api'
 
 export async function POST(req: NextRequest) {
+  const requiredKey = process.env.ADMIN_DEBUG_KEY
+  const providedKey = req.headers.get('x-debug-key')
+  if (!requiredKey || providedKey !== requiredKey) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     // Check if already seeded
     const userCount = await db.user.count()
